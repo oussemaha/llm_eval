@@ -71,6 +71,7 @@ class Preprocess:
                 print(f"Failed to parse JSON: {e}")
                 print(f"Response was: {response[:200]}...")
             return data
+            
     def handle_doc(state: MedDocState,prompt) -> MedDocState:
         response = client.chat.completions.create(
             model=VISION_MODEL,

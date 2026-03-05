@@ -3,7 +3,7 @@ import os
 import csv
 import json
 from openai import OpenAI
-from preprocesing import load_prompts, build_graph
+from src.preprocessing.Image_Preprocessor import load_prompts, build_graph
 
 class Test:
     def __init__(self):
