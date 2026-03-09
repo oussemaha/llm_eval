@@ -6,9 +6,11 @@ import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
-
+from dotenv import load_dotenv
 import faiss
 from sentence_transformers import SentenceTransformer
+from src.controller.tools.Tool import Tool
+from pydantic import BaseModel
 
 
 @dataclass
@@ -27,8 +29,14 @@ class RetrievalResult:
     score: float
     rank: int
 
+class RetrieverInput(BaseModel):
+        query: str
+        top_k: int = 5,
+        score_threshold: Optional[float] = None
+        filter_fn: Optional[Any] = None
 
-class FAISSRetriever:
+load_dotenv()
+class FAISSRetriever_Tool(Tool):
     """
     A FAISS-based document retriever for RAG pipelines.
 
@@ -45,13 +53,13 @@ class FAISSRetriever:
 
     def __init__(
         self,
-        embedding_model: str | SentenceTransformer = "all-MiniLM-L6-v2",
         index_type: str = "flat",
         embedding_dim: Optional[int] = None,
         nlist: int = 100,
-        persist_dir: Optional[str] = None,
     ):
         # Load or reuse embedding model
+        embedding_model=os.getenv("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
+
         if isinstance(embedding_model, str):
             self.model = SentenceTransformer(embedding_model)
         else:
@@ -59,7 +67,6 @@ class FAISSRetriever:
 
         self.index_type = index_type
         self.nlist = nlist
-        self.persist_dir = persist_dir
 
         # Resolve embedding dimension
         if embedding_dim is None:
@@ -77,8 +84,16 @@ class FAISSRetriever:
         self._index = self._build_index()
 
         # Load persisted state if available
+        persist_dir = os.getenv("faiss_persist_dir")
         if persist_dir and os.path.exists(persist_dir):
             self._load(persist_dir)
+        super().__init__(
+            name="search_medical_research", # Underscores are often better for internal naming
+            description="Search the local knowledge base for peer-reviewed medical research, clinical studies, and evidence-based treatment protocols.",
+            schema=RetrieverInput,
+            func=self.retrieve
+        )
+        
 
     # ─────────────────────────────────────────────
     # Index construction
@@ -238,7 +253,7 @@ class FAISSRetriever:
         """
         if self._index.ntotal == 0:
             return []
-
+        print(f"Retrieving for query: '{query}' (top_k={top_k}, score_threshold={score_threshold})")
         # Over-fetch to account for deleted positions + filtering
         fetch_k = min(top_k * 4 + len(self._deleted_positions), self._index.ntotal)
 

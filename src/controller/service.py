@@ -1,57 +1,96 @@
 
+import os
+
+from src.controller.preprocessing.pdf_preprocessor import PDFPreprocessor
+from src.controller.LLM.audio import AudioProcessor
+from src.controller.LLM.Agent import Agent
+from src.controller.tools.Retriever_tool import FAISSRetriever_Tool
+from src.controller.tools.ToolRegistry import  ToolRegistry
+from src.controller.tools.web_search_tool import WebSearchTool
+from src.controller.preprocessing.Image_Preprocessor import ImagePreprocessor
+from dotenv import load_dotenv
+
+import tempfile
+import soundfile as sf
+
+class service:
+    def __init__(self):
+        #.env loading
+        load_dotenv()
+
+        #tool registry initialization and tool registration
+        self.tool_registry = ToolRegistry()
+        self.tool_registry.register_list([WebSearchTool(), FAISSRetriever_Tool()])
+
+        #agent initialization
+        self.llm=Agent(model=os.getenv("LLM"),apikey=os.getenv("api_key"),host=os.getenv("base_url"))
+
+        #audio and image preprocessors initialization
+        self.audio_processor = AudioProcessor(model_name=os.getenv("audio_model"))
+        self.image_preprcessor = ImagePreprocessor()
+        
+        pass
 
 
+    def process(self,history:list,text_input:str,audio_path:str,file_path:str):
+        content=[]
+        
+        #text input
+        content.append({"type": "text", "text": text_input})
 
-from controller.LLM import llm
-from preprocessing.Image_Preprocessor import MedDocState
-from preprocessing.Preprocessor import AudioState, MultimodalState, Preprocessor
-from retriever.retriever import FAISSRetriever
+        #audio transcription
+        if audio_path:
+            # Handle Gradio audio format (tuple of sample_rate, audio_data or file path)
+            audio_file = None
+            if isinstance(audio_path, tuple):
+                # Gradio returns (sample_rate, numpy_array)
+                sample_rate, audio_data = audio_path
+                # Save to temporary file
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                    sf.write(tmp.name, audio_data, sample_rate)
+                    audio_file = tmp.name
+            else:
+                # Direct file path
+                audio_file = audio_path
+            
+            if audio_file:
+                try:
+                    audio_text = self.audio_processor.speech_to_text(audio_file)
+                    content.append({"type": "text", "text": f"Audio transcription: {audio_text}"})
+                except Exception as e:
+                    print(f"Audio processing error: {e}")
+                    content.append({"type": "text", "text": f"[Audio transcription failed: {str(e)}]"})
+        if file_path:
+            #image to base64
+            if file_path.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')): 
+                base64_image = self.image_preprcessor.image_to_base64(file_path)
+                content.append({"type": "image_url", "image_url": {"url": base64_image}})
 
+            #pdf to text and images
+            else: 
+                preprocessor = PDFPreprocessor()
+                pdf_data = preprocessor.preprocess(file_path)
+                pdf_text = []
+                for item in pdf_data:
 
-llm_instance = llm.LLM(vision_model="llava-hf/llava-v1.6-mistral-7b-hf", api_key=None, base_url="http://localhost:8000/v1")
+                    if isinstance(item, str):
+                        pdf_text.append(item)
+                    else:
+                        base64_image = ImagePreprocessor.image_to_base64(item)
+                        content.append({"type": "image_url", "image_url": {"url": base64_image}})
+                content.append({"type": "text", "text": "\n".join(pdf_text)})
 
-def pipeline(image_path:str,audio_path:str,text_input:str):
-    retriever = FAISSRetriever(
-        embedding_model="neuml/pubmedbert-base-embeddings",
-        index_type="flat",
-        persist_dir="assets/retriever_data"
-    )
-    preprocessor = Preprocessor("EMPTY", "http://localhost:8000/v1", "llava-hf/llava-v1.6-mistral-7b-hf", "whisper-1")
-
-    if image_path is not None:
-        image_state:MedDocState = {
-            "image_path": image_path,   # ← swap with your image path or URL
-            "image_b64": "",
-            "doc_type": "unknown",
-            "confidence": "",
-            "doc_desc": "",
-        }
-    else:
-        image_state = None
-
-    if audio_path is not None:
-        audio_state :AudioState= {
-            "audio_path": audio_path,
-            "transcribed_text": "",
-        }
-    else:
-        audio_state = None
-
-    state:MultimodalState={
-        "image_process": image_state,
-        "audio_process": audio_state,
-        "text_input": text_input,
-        "final_output": None,
-    }
-    preprocessor.build_graph()  # build the graph lazily
-    final_state = preprocessor.app.invoke(state)
-    retriever_prompt=f"data extracted from image: {final_state['image_process']['doc_desc']}\n\n" \
-        f"user question: {text_input}. {final_state['audio_process']['transcribed_text']}\n\n" \
-        f"Based on the above information, retrieve relevant medical knowledge to answer the user's question."
-    
-    knowledge_base=retriever.retrieve(retriever_prompt)    
-    final_prompt=f"""user question: {text_input} . {final_state['audio_process']['transcribed_text']}\n\n \   knowledge retrieved from retriever: {knowledge_base}\n\n 
-        Based on the above information, provide a comprehensive answer to the user's question.
-    """
-    llm_response = llm_instance.call_vision(image_path=image_path,user_prompt=final_prompt)
-    return llm_response
+        history=[
+            *history,
+            {"role": "user", "content": content},
+        ]
+        
+        #response generation
+        response = self.llm.run(self.tool_registry,history)
+        history.append({
+            "role": "assistant",
+            "content": response
+            })
+        return history        
+        
+        
