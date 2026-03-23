@@ -1,3 +1,10 @@
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 ##PoC with gradio or streamlit
 from src.controller.service import service
 from src.view.gradio import MultimodalChatUI
@@ -9,7 +16,6 @@ def chat_logic(message, audio, files, history):
 
     history = history or []
     history = svc.process(history=history,text_input=message, audio_path=audio, file_path=files[0] if files else None)
-    
     ui_history = []
     for msg in history:
         role = msg.get("role", "user")
@@ -35,4 +41,4 @@ if __name__ == "__main__":
     ui = MultimodalChatUI(chat_callback=chat_logic)
 
     demo = ui.build()
-    demo.launch()
+    demo.launch(server_name="0.0.0.0")

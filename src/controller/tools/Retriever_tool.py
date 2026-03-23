@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 import os
 import json
 import pickle
@@ -9,9 +11,8 @@ from datetime import datetime
 from dotenv import load_dotenv
 import faiss
 from sentence_transformers import SentenceTransformer
-from src.controller.tools.Tool import Tool
 from pydantic import BaseModel
-
+from src.controller.tools.Tool import Tool
 
 @dataclass
 class Document:
@@ -31,9 +32,6 @@ class RetrievalResult:
 
 class RetrieverInput(BaseModel):
         query: str
-        top_k: int = 5,
-        score_threshold: Optional[float] = None
-        filter_fn: Optional[Any] = None
 
 load_dotenv()
 class FAISSRetriever_Tool(Tool):
@@ -84,20 +82,16 @@ class FAISSRetriever_Tool(Tool):
         self._index = self._build_index()
 
         # Load persisted state if available
-        persist_dir = os.getenv("faiss_persist_dir")
+        persist_dir = os.getenv("faiss_persist_dir",)
         if persist_dir and os.path.exists(persist_dir):
             self._load(persist_dir)
+
         super().__init__(
-            name="search_medical_research", # Underscores are often better for internal naming
+            name="medical_research", 
             description="Search the local knowledge base for peer-reviewed medical research, clinical studies, and evidence-based treatment protocols.",
             schema=RetrieverInput,
             func=self.retrieve
-        )
-        
-
-    # ─────────────────────────────────────────────
-    # Index construction
-    # ─────────────────────────────────────────────
+        )   
 
     def _build_index(self) -> faiss.Index:
         if self.index_type == "flat":
@@ -109,9 +103,7 @@ class FAISSRetriever_Tool(Tool):
         else:
             raise ValueError(f"Unknown index_type '{self.index_type}'. Choose 'flat' or 'ivf'.")
 
-    # ─────────────────────────────────────────────
-    # Embedding helpers
-    # ─────────────────────────────────────────────
+
 
     def _embed(self, texts: List[str]) -> np.ndarray:
         """Embed and L2-normalize a list of texts (enables cosine similarity via IP)."""
@@ -120,9 +112,7 @@ class FAISSRetriever_Tool(Tool):
         faiss.normalize_L2(vectors)
         return vectors
 
-    # ─────────────────────────────────────────────
-    # Document management
-    # ─────────────────────────────────────────────
+
 
     def add_documents(
         self,
@@ -170,7 +160,7 @@ class FAISSRetriever_Tool(Tool):
                 self._documents[doc.id] = doc
                 self._index_ids.append(doc.id)
                 added_ids.append(doc.id)
-            print(f"Added {len(batch)} documents (total: {len(self._documents)})")
+            logger.info(f"Added {len(batch)} documents (total: {len(self._documents)})")
 
         return added_ids
 
@@ -228,9 +218,6 @@ class FAISSRetriever_Tool(Tool):
         """Return all (non-deleted) documents."""
         return list(self._documents.values())
 
-    # ─────────────────────────────────────────────
-    # Retrieval
-    # ─────────────────────────────────────────────
 
     def retrieve(
         self,
@@ -253,7 +240,7 @@ class FAISSRetriever_Tool(Tool):
         """
         if self._index.ntotal == 0:
             return []
-        print(f"Retrieving for query: '{query}' (top_k={top_k}, score_threshold={score_threshold})")
+        logger.info(f"Retrieving for query: '{query}' (top_k={top_k}, score_threshold={score_threshold})")
         # Over-fetch to account for deleted positions + filtering
         fetch_k = min(top_k * 4 + len(self._deleted_positions), self._index.ntotal)
 
@@ -286,7 +273,8 @@ class FAISSRetriever_Tool(Tool):
         # Assign ranks
         for i, r in enumerate(results):
             r.rank = i + 1
-
+        logger.info(f"Retrieved {len(results)} documents for query: '{query}'")
+        logger.info(f"Retrieved documents: {results}")
         return results
 
     def retrieve_batch(
@@ -297,9 +285,6 @@ class FAISSRetriever_Tool(Tool):
         """Retrieve results for multiple queries in a single batched call."""
         return [self.retrieve(q, top_k=top_k) for q in queries]
 
-    # ─────────────────────────────────────────────
-    # Index maintenance
-    # ─────────────────────────────────────────────
 
     def rebuild_index(self) -> None:
         """
@@ -320,9 +305,6 @@ class FAISSRetriever_Tool(Tool):
         self._deleted_positions = set()
         self._index = self._build_index()
 
-    # ─────────────────────────────────────────────
-    # Persistence
-    # ─────────────────────────────────────────────
 
     def save(self, directory: Optional[str] = None) -> str:
         """
@@ -366,9 +348,6 @@ class FAISSRetriever_Tool(Tool):
                 k: Document(**v) for k, v in meta.get("documents", {}).items()
             }
 
-    # ─────────────────────────────────────────────
-    # Stats & utilities
-    # ─────────────────────────────────────────────
 
     @property
     def stats(self) -> Dict[str, Any]:
@@ -395,88 +374,21 @@ class FAISSRetriever_Tool(Tool):
 if __name__ == "__main__":
     import sys
     
-    # CSV file path - update this to your CSV file location
-    csv_file_path = "/home/oussema/Downloads/abstracts.csv"  # Should have 'doi' and 'abstract' columns
-    
-    if len(sys.argv) > 1:
-        csv_file_path = sys.argv[1]
-    
-    if not os.path.exists(csv_file_path):
-        print(f"Error: CSV file not found at {csv_file_path}")
-        print("Usage: python retriever.py <path_to_csv_file>")
-        sys.exit(1)
-    
+
     # Initialize the retriever with persistence
-    retriever = FAISSRetriever(
-        embedding_model="neuml/pubmedbert-base-embeddings",
-        index_type="flat",
-        persist_dir="./retriever_data"
-    )
+    retriever = FAISSRetriever_Tool()
     
-    # Load documents from CSV file
-    print(f"Loading documents from {csv_file_path}...")
-    documents = []
+
+
+    query = "machine learning"
+    print(f"\nExample retrieval for query: '{query}'")
+    results = retriever.retrieve(query, top_k=5)
     
-    try:
-        with open(csv_file_path, 'r', encoding='utf-8') as f:
-            csv_reader = csv.DictReader(f)
-            
-            for row_num, row in enumerate(csv_reader, start=2):  # start=2 to account for header
-                try:
-                    doi = row.get('doi', '').strip()
-                    abstract = row.get('abstract', '').strip()
-                    
-                    # Skip rows with missing doi or abstract
-                    if not doi or not abstract:
-                        continue
-                    
-                    doc = {
-                        "id": doi,
-                        "content": abstract,
-                        "metadata": {"source": "csv", "doi": doi}
-                    }
-                    documents.append(doc)
-                    
-                    # Print progress every 1000 rows
-                    if len(documents) % 1000 == 0:
-                        print(f"  Processed {len(documents)} documents...")
-                
-                except Exception as e:
-                    print(f"Warning: Error processing row {row_num}: {e}")
-                    continue
-        
-        if not documents:
-            print("No valid documents found in CSV file!")
-            sys.exit(1)
-        
-        print(f"\nTotal documents loaded from CSV: {len(documents)}")
-        
-        # Add documents to the retriever in batches
-        print("Adding documents to retriever...")
-        added_ids = retriever.add_documents(documents, batch_size=64)
-        print(f"Successfully added {len(added_ids)} documents to retriever")
-        
-        # Display retriever statistics
-        print(f"\nRetriever stats: {retriever.stats}")
-        
-        # Example: Retrieve documents based on a query
-        query = "machine learning"
-        print(f"\nExample retrieval for query: '{query}'")
-        results = retriever.retrieve(query, top_k=5)
-        
-        if results:
-            for result in results:
-                print(f"\nRank {result.rank} (Score: {result.score:.4f})")
-                print(f"DOI: {result.document.id}")
-                print(f"Abstract: {result.document.content[:200]}...")
-        else:
-            print("No results found")
-        
-        # Save the retriever state
-        print(f"\nSaving retriever state...")
-        save_path = retriever.save()
-        print(f"Retriever saved to: {save_path}")
-        
-    except Exception as e:
-        print(f"Error loading CSV file: {e}")
-        sys.exit(1)
+    if results:
+        for result in results:
+            print(f"\nRank {result.rank} (Score: {result.score:.4f})")
+            print(f"DOI: {result.document.id}")
+            print(f"Abstract: {result.document.content[:200]}...")
+    else:
+        print("No results found")
+

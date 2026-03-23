@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 import gradio as gr
 
 class MultimodalChatUI:
@@ -7,6 +9,14 @@ class MultimodalChatUI:
         chat_callback must be a function with signature:
 
         fn(message, audio, files, history) -> (chatbot_history, new_history)
+
+        For streaming, chat_callback can be a **generator**:
+
+        def streaming_callback(message, audio, files, history):
+            partial_history = [..., [user_msg, ""]]
+            for token in service.process_stream(history, message):
+                partial_history[-1][1] += token
+                yield partial_history, partial_history
         """
         self.chat_callback = chat_callback
         self.demo = None
@@ -146,6 +156,7 @@ class MultimodalChatUI:
             )
 
         self.demo = demo
+        demo.queue()  # Required for streaming generator callbacks
         return demo
 
     def launch(self, **kwargs):

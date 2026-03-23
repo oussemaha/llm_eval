@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 
 import os
 
@@ -23,20 +25,21 @@ class service:
         self.tool_registry.register_list([WebSearchTool(), FAISSRetriever_Tool()])
 
         #agent initialization
-        self.llm=Agent(model=os.getenv("LLM"),apikey=os.getenv("api_key"),host=os.getenv("base_url"))
+        self.llm=Agent(model=os.getenv("LLM"),apikey=os.getenv("api_key"),host=os.getenv("base_url"),max_steps=100)
 
         #audio and image preprocessors initialization
         self.audio_processor = AudioProcessor(model_name=os.getenv("audio_model"))
         self.image_preprcessor = ImagePreprocessor()
-        
+        self.pdf_preprocessor = PDFPreprocessor()
+
         pass
 
-
-    def process(self,history:list,text_input:str,audio_path:str,file_path:str):
+    def preprocess(self,history:list,text_input:str,audio_path:str,file_path:str):
         content=[]
         
         #text input
-        content.append({"type": "text", "text": text_input})
+        if text_input:
+            content.append({"type": "text", "text": text_input})
 
         #audio transcription
         if audio_path:
@@ -58,33 +61,44 @@ class service:
                     audio_text = self.audio_processor.speech_to_text(audio_file)
                     content.append({"type": "text", "text": f"Audio transcription: {audio_text}"})
                 except Exception as e:
-                    print(f"Audio processing error: {e}")
+                    logger.error(f"Audio processing error: {e}")
                     content.append({"type": "text", "text": f"[Audio transcription failed: {str(e)}]"})
         if file_path:
             #image to base64
-            if file_path.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')): 
-                base64_image = self.image_preprcessor.image_to_base64(file_path)
-                content.append({"type": "image_url", "image_url": {"url": base64_image}})
+            if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')): 
+                try:
+                    base64_image = self.image_preprcessor.image_to_base64(file_path)
+                    content.append({"type": "image_url", "image_url": {"url": base64_image}})
+                except Exception as e:
+                    logger.error(f"Image processing error: {e}")
+                    content.append({"type": "text", "text": f"[Image processing failed: {str(e)}]"})
 
             #pdf to text and images
             else: 
-                preprocessor = PDFPreprocessor()
-                pdf_data = preprocessor.preprocess(file_path)
-                pdf_text = []
-                for item in pdf_data:
+                try:
+                    pdf_data = self.pdf_preprocessor.preprocess(file_path)
+                    pdf_text = []
+                    for item in pdf_data:
 
-                    if isinstance(item, str):
-                        pdf_text.append(item)
-                    else:
-                        base64_image = ImagePreprocessor.image_to_base64(item)
-                        content.append({"type": "image_url", "image_url": {"url": base64_image}})
-                content.append({"type": "text", "text": "\n".join(pdf_text)})
+                        if isinstance(item, str):
+                            pdf_text.append(item)
+                        else:
+                            base64_image = self.image_preprcessor.image_to_base64(item)
+                            content.append({"type": "image_url", "image_url": {"url": base64_image}})
+                    content.append({"type": "text", "text": "\n".join(pdf_text)})
+                except Exception as e:
+                    logger.error(f"PDF processing error: {e}")
+                    content.append({"type": "text", "text": f"[PDF processing failed: {str(e)}]"})
 
         history=[
             *history,
             {"role": "user", "content": content},
         ]
+        return history
+
+    def process(self,history:list,text_input:str,audio_path:str,file_path:str):
         
+        history=self.preprocess(history,text_input,audio_path,file_path)
         #response generation
         response = self.llm.run(self.tool_registry,history)
         history.append({
@@ -92,5 +106,10 @@ class service:
             "content": response
             })
         return history        
-        
-        
+
+    def process_stream(self, history: list, text_input: str, audio_path: str = None, file_path: str = None):
+        """Same as process() but streams the final LLM response as text delta chunks (generator)."""
+        messages=self.preprocess(history,text_input,audio_path,file_path)
+
+        # Stream the LLM response
+        yield from self.llm.run_stream(self.tool_registry, messages)

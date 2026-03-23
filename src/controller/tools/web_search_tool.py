@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 from ddgs import DDGS
 from src.controller.tools.Tool import Tool
 from pydantic import BaseModel
@@ -9,8 +11,8 @@ class WebSearchInput(BaseModel):
 class WebSearchTool(Tool):
     def __init__(self):
         super().__init__(
-            name="search",
-            description="Search information from internet if u don't know",
+            name="web_search",
+            description="A comprehensive web search engine. Use this tool to retrieve real-time information, verify facts, or find details on topics outside your training data.",
             schema=WebSearchInput,
             func=web_search
         )
@@ -26,7 +28,7 @@ def web_search(query: str, max_results: int = 5) -> list[dict]:
     Returns:
         List of search results with title, link, and snippet
     """
-    print("called web search with query:", query)
+    logger.info(f"called web search with query: {query}")
     try:
         results = []
         with DDGS() as ddgs:
@@ -38,5 +40,5 @@ def web_search(query: str, max_results: int = 5) -> list[dict]:
                 })
         return results
     except Exception as e:
-        print(f"Search error: {e}")
+        logger.error(f"Search error: {e}")
         return []
