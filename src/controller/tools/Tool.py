@@ -1,4 +1,5 @@
 import logging
+
 logger = logging.getLogger(__name__)
 from collections.abc import Callable
 from typing import Type
@@ -7,7 +8,9 @@ from pydantic import BaseModel
 
 
 class Tool:
-    def __init__(self, name: str, description: str, schema: Type[BaseModel], func: Callable):
+    def __init__(
+        self, name: str, description: str, schema: Type[BaseModel], func: Callable
+    ):
         self.name = name
         self.description = description
         self.schema = schema

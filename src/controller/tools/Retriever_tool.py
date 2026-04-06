@@ -1,4 +1,5 @@
 import logging
+
 logger = logging.getLogger(__name__)
 import os
 import json
@@ -14,9 +15,11 @@ from sentence_transformers import SentenceTransformer
 from pydantic import BaseModel
 from src.controller.tools.Tool import Tool
 
+
 @dataclass
 class Document:
     """Represents a document stored in the retriever."""
+
     id: str
     content: str
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -26,14 +29,19 @@ class Document:
 @dataclass
 class RetrievalResult:
     """Represents a single retrieval result."""
+
     document: Document
     score: float
     rank: int
 
+
 class RetrieverInput(BaseModel):
-        query: str
+    query: str
+
 
 load_dotenv()
+
+
 class FAISSRetriever_Tool(Tool):
     """
     A FAISS-based document retriever for RAG pipelines.
@@ -56,7 +64,9 @@ class FAISSRetriever_Tool(Tool):
         nlist: int = 100,
     ):
         # Load or reuse embedding model
-        embedding_model=os.getenv("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
+        embedding_model = os.getenv(
+            "embedding_model", "sentence-transformers/all-MiniLM-L6-v2"
+        )
 
         if isinstance(embedding_model, str):
             self.model = SentenceTransformer(embedding_model)
@@ -74,45 +84,51 @@ class FAISSRetriever_Tool(Tool):
             self.embedding_dim = embedding_dim
 
         # Internal state
-        self._documents: Dict[str, Document] = {}   # doc_id → Document
-        self._index_ids: List[str] = []              # positional id list (FAISS index ↔ doc_id)
-        self._deleted_positions: set = set()         # soft-deleted positions
+        self._documents: Dict[str, Document] = {}  # doc_id → Document
+        self._index_ids: List[str] = []  # positional id list (FAISS index ↔ doc_id)
+        self._deleted_positions: set = set()  # soft-deleted positions
 
         # Build FAISS index
         self._index = self._build_index()
 
         # Load persisted state if available
-        persist_dir = os.getenv("faiss_persist_dir",)
+        persist_dir = os.getenv(
+            "faiss_persist_dir",
+        )
         if persist_dir and os.path.exists(persist_dir):
             self._load(persist_dir)
 
         super().__init__(
-            name="medical_research", 
+            name="medical_research",
             description="Search the local knowledge base for peer-reviewed medical research, clinical studies, and evidence-based treatment protocols.",
             schema=RetrieverInput,
-            func=self.retrieve
-        )   
+            func=self.retrieve,
+        )
 
     def _build_index(self) -> faiss.Index:
         if self.index_type == "flat":
-            return faiss.IndexFlatIP(self.embedding_dim)   # inner-product (cosine after normalizing)
+            return faiss.IndexFlatIP(
+                self.embedding_dim
+            )  # inner-product (cosine after normalizing)
         elif self.index_type == "ivf":
             quantizer = faiss.IndexFlatIP(self.embedding_dim)
-            index = faiss.IndexIVFFlat(quantizer, self.embedding_dim, self.nlist, faiss.METRIC_INNER_PRODUCT)
+            index = faiss.IndexIVFFlat(
+                quantizer, self.embedding_dim, self.nlist, faiss.METRIC_INNER_PRODUCT
+            )
             return index
         else:
-            raise ValueError(f"Unknown index_type '{self.index_type}'. Choose 'flat' or 'ivf'.")
-
-
+            raise ValueError(
+                f"Unknown index_type '{self.index_type}'. Choose 'flat' or 'ivf'."
+            )
 
     def _embed(self, texts: List[str]) -> np.ndarray:
         """Embed and L2-normalize a list of texts (enables cosine similarity via IP)."""
-        vectors = self.model.encode(texts, show_progress_bar=False, convert_to_numpy=True)
+        vectors = self.model.encode(
+            texts, show_progress_bar=False, convert_to_numpy=True
+        )
         vectors = vectors.astype(np.float32)
         faiss.normalize_L2(vectors)
         return vectors
-
-
 
     def add_documents(
         self,
@@ -192,7 +208,9 @@ class FAISSRetriever_Tool(Tool):
         """Convenience wrapper for deleting a single document."""
         return len(self.delete_documents([doc_id])) > 0
 
-    def update_document(self, doc_id: str, new_content: str, new_metadata: Optional[Dict] = None) -> bool:
+    def update_document(
+        self, doc_id: str, new_content: str, new_metadata: Optional[Dict] = None
+    ) -> bool:
         """
         Update a document's content (and optionally its metadata).
 
@@ -218,7 +236,6 @@ class FAISSRetriever_Tool(Tool):
         """Return all (non-deleted) documents."""
         return list(self._documents.values())
 
-
     def retrieve(
         self,
         query: str,
@@ -240,7 +257,9 @@ class FAISSRetriever_Tool(Tool):
         """
         if self._index.ntotal == 0:
             return []
-        logger.info(f"Retrieving for query: '{query}' (top_k={top_k}, score_threshold={score_threshold})")
+        logger.info(
+            f"Retrieving for query: '{query}' (top_k={top_k}, score_threshold={score_threshold})"
+        )
         # Over-fetch to account for deleted positions + filtering
         fetch_k = min(top_k * 4 + len(self._deleted_positions), self._index.ntotal)
 
@@ -285,7 +304,6 @@ class FAISSRetriever_Tool(Tool):
         """Retrieve results for multiple queries in a single batched call."""
         return [self.retrieve(q, top_k=top_k) for q in queries]
 
-
     def rebuild_index(self) -> None:
         """
         Hard-rebuild the FAISS index from scratch, permanently removing
@@ -304,7 +322,6 @@ class FAISSRetriever_Tool(Tool):
         self._index_ids = []
         self._deleted_positions = set()
         self._index = self._build_index()
-
 
     def save(self, directory: Optional[str] = None) -> str:
         """
@@ -348,7 +365,6 @@ class FAISSRetriever_Tool(Tool):
                 k: Document(**v) for k, v in meta.get("documents", {}).items()
             }
 
-
     @property
     def stats(self) -> Dict[str, Any]:
         return {
@@ -373,17 +389,14 @@ class FAISSRetriever_Tool(Tool):
 
 if __name__ == "__main__":
     import sys
-    
 
     # Initialize the retriever with persistence
     retriever = FAISSRetriever_Tool()
-    
-
 
     query = "machine learning"
     print(f"\nExample retrieval for query: '{query}'")
     results = retriever.retrieve(query, top_k=5)
-    
+
     if results:
         for result in results:
             print(f"\nRank {result.rank} (Score: {result.score:.4f})")
@@ -391,4 +404,3 @@ if __name__ == "__main__":
             print(f"Abstract: {result.document.content[:200]}...")
     else:
         print("No results found")
-

@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".webm"}
 
+
 @lru_cache(maxsize=4)
 def load_whisper_model(model_name: str) -> whisper.Whisper:
     """Load and cache Whisper model to avoid repeated expensive loads."""
@@ -29,7 +30,9 @@ class AudioProcessor:
         if p.stat().st_size == 0:
             raise ValueError(f"Audio file is empty: {path}")
         if p.suffix.lower() not in SUPPORTED_EXTENSIONS:
-            raise ValueError(f"Unsupported file type '{p.suffix}'. Supported: {SUPPORTED_EXTENSIONS}")
+            raise ValueError(
+                f"Unsupported file type '{p.suffix}'. Supported: {SUPPORTED_EXTENSIONS}"
+            )
         return p
 
     def speech_to_text(self, audio_file_path: str) -> dict:
@@ -59,7 +62,9 @@ class AudioProcessor:
             raise RuntimeError(f"Transcription failed: {e}") from e
 
         language = result.get("language", "unknown")
-        logger.info(f"Transcribed '{audio_file_path}' | lang={language} | chars={len(result['text'])}")
+        logger.info(
+            f"Transcribed '{audio_file_path}' | lang={language} | chars={len(result['text'])}"
+        )
         """
             return {
                 "text": result["text"].strip(),
@@ -77,6 +82,8 @@ class AudioProcessor:
         except Exception as e:
             if any(kw in str(e).lower() for kw in ("cuda", "nan", "out of memory")):
                 logger.warning(f"GPU transcription failed ({e}), retrying on CPU")
-                cpu_model = whisper.load_model(self.model.dims.n_mels and "base", device="cpu")
+                cpu_model = whisper.load_model(
+                    self.model.dims.n_mels and "base", device="cpu"
+                )
                 return cpu_model.transcribe(audio_file_path, fp16=False)
             raise

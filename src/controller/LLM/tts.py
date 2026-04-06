@@ -14,7 +14,7 @@ VoiceGender = Literal["male", "female"]
 class TTSProcessor:
     """
     Text-to-Speech processor using pyttsx3 (offline, cross-platform).
-    
+
     Supports:
       - Speaking text aloud directly
       - Saving speech to .wav or .mp3
@@ -24,12 +24,13 @@ class TTSProcessor:
 
     def __init__(
         self,
-        rate: int = 175,           # words per minute (default human ~150-180)
-        volume: float = 1.0,       # 0.0 to 1.0
+        rate: int = 175,  # words per minute (default human ~150-180)
+        volume: float = 1.0,  # 0.0 to 1.0
         voice_gender: VoiceGender = "female",
     ):
         try:
             import pyttsx3
+
             self.engine = pyttsx3.init()
         except Exception as e:
             raise RuntimeError(f"Failed to initialize TTS engine: {e}") from e
@@ -192,9 +193,24 @@ class TTSProcessor:
         name_lower = (voice.name or "").lower()
         id_lower = (voice.id or "").lower()
         combined = f"{name_lower} {id_lower}"
-        if any(w in combined for w in ("female", "woman", "zira", "hazel", "susan", "karen", "samantha", "victoria")):
+        if any(
+            w in combined
+            for w in (
+                "female",
+                "woman",
+                "zira",
+                "hazel",
+                "susan",
+                "karen",
+                "samantha",
+                "victoria",
+            )
+        ):
             return "female"
-        if any(w in combined for w in ("male", "man", "david", "mark", "daniel", "alex", "fred")):
+        if any(
+            w in combined
+            for w in ("male", "man", "david", "mark", "daniel", "alex", "fred")
+        ):
             return "male"
         return "unknown"
 
@@ -207,12 +223,13 @@ class TTSProcessor:
             raise ValueError("Text cannot be empty")
         return text
 
+
 if __name__ == "__main__":
     tts = TTSProcessor(rate=175, volume=1.0, voice_gender="male")
 
     # Speak aloud
     tts.speak("Hello, how are you?")
-    
+
     # Save to file
     tts.save_to_file("Hello, how are you?", "output.wav")
     tts.save_to_file("Hello, how are you?", "output.mp3")  # needs pydub + ffmpeg
