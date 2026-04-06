@@ -39,6 +39,11 @@ class Service:
     def preprocess(
         self, history: list, text_input: str, audio_path: str, file_path: str
     ):
+        logger.info(f"Preprocessing inputs - Text: {text_input}, Audio: {audio_path}, File: {file_path}")
+        if file_path:
+            file_path=[file_path]
+        else:    
+            file_path=None
         content=self.preprocessor.run_v2(text_input, audio_path, file_path)
         history = [
             *history,

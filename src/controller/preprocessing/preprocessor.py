@@ -1,6 +1,12 @@
 from dotenv import load_dotenv
+from src.controller.LLM.audio import AudioProcessor
+from src.controller.preprocessing.Image_Preprocessor import ImagePreprocessor
+from src.controller.preprocessing.pdf_preprocessor import PDFPreprocessor
+from src.controller.preprocessing.mineru import MineruClient
+import logging
 
-
+logger = logging.getLogger(__name__)
+import os
 class Preprocessor:
     
     def __init__(self):
@@ -88,14 +94,25 @@ class Preprocessor:
         if files:
             try:
                 result=self.mineru_client.parse_file(files,backend="hybrid-http-client",parse_method="auto",return_images=True)
-                    
+                content.extend(result)  
+                for file in files:
+                     if file_path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp")):
+                        try:
+                            base64_image = self.image_preprcessor.image_to_base64(file_path)
+                            content.append(
+                                {"type": "image_url", "image_url": {"url": base64_image}}
+                            )
+                        except Exception as e:
+                            logger.error(f"Image processing error: {e}")
+                            content.append(
+                                {"type": "text", "text": f"[Image processing failed: {str(e)}]"}
+                            ) 
             except Exception as e:
                 logger.error(f"file processing error: {e}")
                 content.append(
                     {"type": "text", "text": f"[file processing failed: {str(e)}]"}
                 )
-        content.append(result)
-
+            
         if audio_path:
             # Handle Gradio audio format (tuple of sample_rate, audio_data or file path)
             audio_file = None

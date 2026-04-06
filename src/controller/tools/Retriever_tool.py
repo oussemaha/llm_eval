@@ -258,7 +258,7 @@ class FAISSRetriever_Tool(Tool):
         if self._index.ntotal == 0:
             return []
         logger.info(
-            f"Retrieving for query: '{query}' (top_k={top_k}, score_threshold={score_threshold})"
+            f"Retrieving for query: '{query[:100]}' (top_k={top_k}, score_threshold={score_threshold})"
         )
         # Over-fetch to account for deleted positions + filtering
         fetch_k = min(top_k * 4 + len(self._deleted_positions), self._index.ntotal)
@@ -292,8 +292,7 @@ class FAISSRetriever_Tool(Tool):
         # Assign ranks
         for i, r in enumerate(results):
             r.rank = i + 1
-        logger.info(f"Retrieved {len(results)} documents for query: '{query}'")
-        logger.info(f"Retrieved documents: {results}")
+        logger.info(f"Retrieved {len(results)} documents for query: '{query[:100]}'")
         return results
 
     def retrieve_batch(
