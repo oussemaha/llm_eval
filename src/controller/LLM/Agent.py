@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 # rom langfuse.openai import OpenAI # OpenAI integration
 from openai import OpenAI
 
-# from openai import OpenAI
+from openai import OpenAI
 from src.controller.tools import ToolRegistry
 
 load_dotenv()

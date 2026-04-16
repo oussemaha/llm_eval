@@ -6,6 +6,7 @@ class MineruClient:
     def __init__(self, base_url="http://localhost:8000"):
         self.base_url = base_url.rstrip('/')
         self.endpoint = f"{self.base_url}/file_parse"
+        
     def extract_from_response(self,response:dict,return_images:bool):
         content=[]
         if not return_images:
