@@ -16,26 +16,38 @@ class Service:
         message=[]
         if files_path:
             pre=self.preprocessor.preprocess_docs(files_path)
-            print(pre)
             message.extend(pre)
         if audio_path:
-            message.append(self.preprocessor.preprocess_audio(audio_path))
+            message.extend(self.preprocessor.preprocess_audio(audio_path))
         if text:
             message.append({"type":"text","text":text})
         
         history.append({"role":"user","content":message})
         #the next part can be implemented using langgraph or just a simple if else
         #for now i will implement it using a simple if else
-        classification=self.classifier_agent.run(history)
-        classification=json.loads(classification)
+        history_copy=history.copy()
+        classification=self.classifier_agent.run(history_copy)
+        
+        # Clean up possible markdown wrapper
+        import re
+        cleaned_classification = re.sub(r'^```json\s*', '', classification.strip(), flags=re.IGNORECASE)
+        cleaned_classification = re.sub(r'```$', '', cleaned_classification.strip())
+        
+        try:
+            classification=json.loads(cleaned_classification)
+        except json.JSONDecodeError as e:
+            # Fallback to general agent behavior
+            classification = {"is_reasoning_required": False, "retrieval_queries": []}
         if classification["is_reasoning_required"]:
             knowledge=[]
             for query in classification["retrieval_queries"]:
                 knowledge.append(self.retriever.retrieve(query))
             history.append({"role":"user","content":[{"type":"text","text":f"knowledge: {knowledge}"}]})
-            return self.reasoning_agent.run(history)
+            history_copy.append({"role":"assistant","content":self.reasoning_agent.run(history)})
+            return history_copy
         else:
-            return self.generic_agent.run(history)
+            history_copy.append({"role":"assistant","content":self.generic_agent.run(history)})
+            return history_copy
         
         
 if __name__ == "__main__":

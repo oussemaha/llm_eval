@@ -1,6 +1,11 @@
 from concurrent.futures import ThreadPoolExecutor
 from src.preprocessing.MineruClient import MineruClient
 from src.AI.Agent import Agent
+from src.AI.STT import AudioProcessor
+import tempfile
+import soundfile as sf
+
+
 import logging
 logger = logging.getLogger(__name__)
 class Preprocessor:
@@ -10,7 +15,7 @@ class Preprocessor:
         self.tableAgent=Agent(host="http://localhost:2000/v1",apikey="EMPTY",model="Qwen/Qwen3-VL-8B-Instruct",system_prompt_file="assests/system_prompts/table_sys_prompt.txt")
         self.chartAgent=Agent(host="http://localhost:2000/v1",apikey="EMPTY",model="Qwen/Qwen3-VL-8B-Instruct",system_prompt_file="assests/system_prompts/charts_sys_prompt.txt")
         self.otherAgent=Agent(host="http://localhost:2000/v1",apikey="EMPTY",model="Qwen/Qwen3-VL-8B-Instruct",system_prompt_file="assests/system_prompts/other_sys_prompt.txt")
-    
+        self.audio_processor=AudioProcessor()
     def process_file(self, i):
         additions = [i] 
 
@@ -47,33 +52,33 @@ class Preprocessor:
     def preprocess_audio(self,audio_path:str):
         content=[]
         if audio_path:
-                # Handle Gradio audio format (tuple of sample_rate, audio_data or file path)
-                audio_file = None
-                if isinstance(audio_path, tuple):
-                    # Gradio returns (sample_rate, numpy_array)
-                    sample_rate, audio_data = audio_path
-                    # Save to temporary file
-                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                        sf.write(tmp.name, audio_data, sample_rate)
-                        audio_file = tmp.name
-                else:
-                    # Direct file path
-                    audio_file = audio_path
+            # Handle Gradio audio format (tuple of sample_rate, audio_data or file path)
+            audio_file = None
+            if isinstance(audio_path, tuple):
+                # Gradio returns (sample_rate, numpy_array)
+                sample_rate, audio_data = audio_path
+                # Save to temporary file
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                    sf.write(tmp.name, audio_data, sample_rate)
+                    audio_file = tmp.name
+            else:
+                # Direct file path
+                audio_file = audio_path
 
-                if audio_file:
-                    try:
-                        audio_text = self.audio_processor.speech_to_text(audio_file)
-                        content.append(
-                            {"type": "text", "text": f"Audio transcription: {audio_text}"}
-                        )
-                    except Exception as e:
-                        logger.error(f"Audio processing error: {e}")
-                        content.append(
-                            {
-                                "type": "text",
-                                "text": f"[Audio transcription failed: {str(e)}]",
-                            }
-                        )
+            if audio_file:
+                try:
+                    audio_text = self.audio_processor.speech_to_text(audio_file)
+                    content.append(
+                        {"type": "text", "text": f"Audio transcription: {audio_text}"}
+                    )
+                except Exception as e:
+                    logger.error(f"Audio processing error: {e}")
+                    content.append(
+                        {
+                            "type": "text",
+                            "text": f"[Audio transcription failed: {str(e)}]",
+                        }
+                    )
         return content
 if __name__ == "__main__":
     pre=Preprocessor()
