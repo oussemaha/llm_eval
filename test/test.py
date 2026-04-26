@@ -11,7 +11,7 @@ prompts=[
     "what's the solution of this case?",
     
 ]
-with open("test/answers.json", "w", encoding="utf-8") as output:
+with open(f"{files}answers.json", "w", encoding="utf-8") as output:
     prompt_idx=0
     for file in os.listdir(files):
         result=svc.process(history=[],files_path=[os.path.join(files,file)],audio_path=None,text=prompts[prompt_idx])
