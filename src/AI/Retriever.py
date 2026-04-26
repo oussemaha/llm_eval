@@ -387,7 +387,7 @@ if __name__ == "__main__":
     # Initialize the retriever with persistence
     retriever = FAISSRetriever_Tool()
 
-    query = "machine learning"
+    query = "what's IVF and how it works?"
     print(f"\nExample retrieval for query: '{query}'")
     results = retriever.retrieve(query, top_k=5)
 

@@ -48,6 +48,7 @@ class MineruClient:
 
     def extract_from_response(self,response:dict,return_images:bool):
         content=[]
+        content_md=[]
         print(return_images)
 
         n_doc=0
@@ -69,9 +70,11 @@ class MineruClient:
                     content.append({"type": "image_url", "image_url": {"url": response[item]["images"][image_path],"type":images_type[image_path]}})
                     if text:
                         content.append({"type": "text", "text": text})
+                        content_md.append(text)
                 else:
                     content.append({"type": "text", "text": i})
-        return content
+                    content_md.append({"type": "text", "text": i})
+        return content,content_md
 
     def parse_file(self, files_list:list[str], **kwargs):
         """
@@ -93,8 +96,13 @@ class MineruClient:
 
         # The 'files' parameter in requests handles multipart/form-data
         files_to_send = []
-        opened_files = []
+        image_paths = []
+        image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp')
+        
         for file_path in files_list:
+                if file_path.lower().endswith(image_extensions):
+                    image_paths.append(file_path)
+
                 if not os.path.exists(file_path):
                     logger.warning(f"Warning: File not found {file_path}")
                     continue
@@ -104,7 +112,6 @@ class MineruClient:
                 mime_type = mime_type or 'application/octet-stream'
                 
                 f = open(file_path, 'rb')
-                opened_files.append(f)
                 
                 files_to_send.append(
                     ('files', (os.path.basename(file_path), f, mime_type))
