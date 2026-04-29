@@ -9,16 +9,18 @@ from PIL import Image
 from typing import Union
 from io import BytesIO
 import base64
-
+import librosa
 import logging
+import fitz  # PyMuPDF
+
 logger = logging.getLogger(__name__)
 class Preprocessor:
 
     def __init__(self):
         self.mineru_client = MineruClient()
-        self.tableAgent=Agent(host="http://localhost:2000/v1",apikey="EMPTY",model="Qwen/Qwen3-VL-8B-Instruct",system_prompt_file="assests/system_prompts/table_sys_prompt.txt")
-        self.chartAgent=Agent(host="http://localhost:2000/v1",apikey="EMPTY",model="Qwen/Qwen3-VL-8B-Instruct",system_prompt_file="assests/system_prompts/charts_sys_prompt.txt")
-        self.otherAgent=Agent(host="http://localhost:2000/v1",apikey="EMPTY",model="Qwen/Qwen3-VL-8B-Instruct",system_prompt_file="assests/system_prompts/other_sys_prompt.txt")
+        self.tableAgent=Agent(system_prompt_file="assests/system_prompts/table_sys_prompt.md")
+        self.chartAgent=Agent(system_prompt_file="assests/system_prompts/charts_sys_prompt.md")
+        self.otherAgent=Agent(system_prompt_file="assests/system_prompts/other_sys_prompt.md")
         self.audio_processor=AudioProcessor()
 
     def _encode_image_and_grayscale(self, image: Union[str, Image.Image]) -> str:
@@ -68,7 +70,6 @@ class Preprocessor:
         # Handle PDF files
         if file_path.suffix.lower() == '.pdf':
             try:
-                import fitz  # PyMuPDF
                 doc = fitz.open(file_path)
                 images = []
                 
@@ -151,13 +152,12 @@ class Preprocessor:
                 print(f"Error reading image {file_path}: {str(e)}")
                 return None
     def process_file(self, i):
-        additions = [i] 
-
+        additions = []   
+        additions.append(i)
         if i.get("type") == "image_url":
             img_type = i["image_url"].get("type")
             url = i["image_url"]["url"]
             message = [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": url}}]}]
-
             # Route to the correct agent
             if img_type == "table":
                 result = self.tableAgent.run(history=message)
@@ -165,17 +165,20 @@ class Preprocessor:
                 result = self.chartAgent.run(history=message)
             else:
                 result = self.otherAgent.run(history=message)
-
-            additions.append({"type": "text", "text": f"this is a description of the image {result}"})
+            additions.append({"type": "text", "text": f"this is a description of the image {result}"})         
 
         return additions
 
     
     def preprocess_docs(self,docs:list[str])->list[dict]:
         files_content=self.mineru_client.parse_file(docs)
+        logger.info(f"Mineru finished, moving to llms if needed")
+        print(files_content)
         orig_image = []
         for image in docs:
             pil_images=self._open_file_as_image(image)
+            if not pil_images:
+                continue
             for img in pil_images:
                 image_url = self._encode_image_and_grayscale(img)
                 orig_image.append({
@@ -184,7 +187,6 @@ class Preprocessor:
                         "url": image_url
                     }
                 }) 
-        logger.info(f"Mineru finished, moving to llms if needed")
         docs_processed = []
 
         with ThreadPoolExecutor(max_workers=10) as executor:
@@ -192,12 +194,14 @@ class Preprocessor:
 
         for sublist in results:
             docs_processed.extend(sublist)
-        docs_processed.append({"type":"text","text":"the following are the original documents the truth, use them if needed, and verify the pervious extracted text is correct if not base only on the document"})
-        docs_processed.extend(orig_image)
+        if len(orig_image)>0:
+            docs_processed.append({"type":"text","text":"the following are the original documents the truth, use them if needed, and verify the pervious extracted text is correct if not base only on the document"})
+            docs_processed.extend(orig_image)
         
         return docs_processed
     def preprocess_audio(self,audio_path:str):
         content=[]
+        """
         if audio_path:
             # Handle Gradio audio format (tuple of sample_rate, audio_data or file path)
             audio_file = None
@@ -211,22 +215,36 @@ class Preprocessor:
             else:
                 # Direct file path
                 audio_file = audio_path
+            """
+        if audio_path:
+            audio_file = None
 
+            # 1. Standardize the data to mono 16kHz
+            if isinstance(audio_path, tuple):
+                # Gradio (sr, numpy)
+                sr_orig, data = audio_path
+                # Convert to mono if stereo
+                if len(data.shape) > 1:
+                    data = librosa.to_mono(data.T)
+                # Resample to 16kHz (Parakeet requirement)
+                data = librosa.resample(data, orig_sr=sr_orig, target_sr=16000)
+                sample_rate = 16000
+            else:
+                # It's a file path - we MUST load and force mono
+                data, sample_rate = librosa.load(audio_path, sr=16000, mono=True)
+
+            # 2. Save the cleaned mono audio to a temporary file
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                sf.write(tmp.name, data, sample_rate)
+                audio_file = tmp.name
             if audio_file:
                 try:
                     audio_text = self.audio_processor.speech_to_text(audio_file)
-                    content.append(
-                        {"type": "text", "text": f"Audio transcription: {audio_text}"}
-                    )
+                    return audio_text
                 except Exception as e:
                     logger.error(f"Audio processing error: {e}")
-                    content.append(
-                        {
-                            "type": "text",
-                            "text": f"[Audio transcription failed: {str(e)}]",
-                        }
-                    )
-        return content
+                    return f"[Audio transcription failed: {str(e)}]"
+                    
 if __name__ == "__main__":
     pre=Preprocessor()
     response=pre.preprocess_docs(["/home/oussema/Downloads/Downloads/pdf_test/1.pdf"])

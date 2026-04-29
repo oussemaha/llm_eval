@@ -49,7 +49,7 @@ class MineruClient:
     def extract_from_response(self,response:dict,return_images:bool):
         content=[]
         content_md=[]
-        print(return_images)
+
 
         n_doc=0
         for item in response:
@@ -74,7 +74,7 @@ class MineruClient:
                 else:
                     content.append({"type": "text", "text": i})
                     content_md.append({"type": "text", "text": i})
-        return content,content_md
+        return content
 
     def parse_file(self, files_list:list[str], **kwargs):
         """

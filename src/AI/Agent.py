@@ -1,32 +1,30 @@
 import logging
-
-logger = logging.getLogger(__name__)
 import json
 import os
 from dotenv import load_dotenv
 
-# from langfuse import observe
-# rom langfuse.openai import OpenAI # OpenAI integration
-from openai import OpenAI
+from langfuse import observe
+from langfuse.openai import OpenAI # OpenAI integration
 
-from openai import OpenAI
+logger = logging.getLogger(__name__)
+
+#from openai import OpenAI
 
 load_dotenv()
 
 
 class Agent:
-    def __init__(self, host: str, apikey: str,system_prompt_file:str, model: str, max_steps: int = 5):
-        self.max_steps = max_steps
+    def __init__(self,system_prompt_file:str,temperature:float=0.2,**kwargs):
 
         self.client = OpenAI(
-            base_url=os.getenv("base_url", host), api_key=os.getenv("api_key", apikey)
+            base_url=os.getenv("vlm_base_url", kwargs.get("host","http://localhost:8000/v1")), api_key=os.getenv("vlm_api_key", kwargs.get("apikey","EMPTY"))
         )
-        self.model = os.getenv("LLM", model)
-
+        self.model = os.getenv("vlm_model", kwargs.get("model","Qwen/Qwen3-VL-8B-Instruct"))
+        self.temperature = temperature
         with open(system_prompt_file, "r") as f:
             self.system_prompt = f.read()
 
-    # @observe()
+    @observe()
     def run(self,history: list):
         input_token = 0
         output_token = 0
@@ -38,6 +36,7 @@ class Agent:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
+                temperature=self.temperature
             )
         except Exception as e:
             # Catch API errors to prevent the massive base64 from dumping to the console

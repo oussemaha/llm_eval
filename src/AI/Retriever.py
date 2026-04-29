@@ -93,6 +93,7 @@ class FAISSRetriever_Tool:
         persist_dir = os.getenv(
             "faiss_persist_dir",
         )
+        print(persist_dir)
         if persist_dir and os.path.exists(persist_dir):
             
             self._load(persist_dir)
@@ -387,7 +388,7 @@ if __name__ == "__main__":
     # Initialize the retriever with persistence
     retriever = FAISSRetriever_Tool()
 
-    query = "what's IVF and how it works?"
+    query = "protocols for managing failed IVF cycles with no blastocysts"
     print(f"\nExample retrieval for query: '{query}'")
     results = retriever.retrieve(query, top_k=5)
 
